@@ -63,3 +63,9 @@ Short record of what we did, kept for later documentation.
 - The server is a **Raspberry Pi** (aarch64). All three images have arm64 builds. cachyOS is only where I edit the repo.
 - Removed the Mac test guide. Moved the two mTLS files from `data/custom_nginx/` to `nginx/` (mounted into NPMplus), so `data/` is purely runtime and fully ignored by git.
 - One guide to follow: `DEPLOY.md` (migration, first deploy, everyday use, WireGuard later). It replaces `SERVER-SETUP.md`.
+
+## 8. Deployed on the Pi (2026-11-07)
+- Cloned to `~/NPMPlus`, next to the old NPM folder. Copied `data/` and `letsencrypt/`, and the old proxy hosts and login carried over.
+- Router: first DNS server = the Pi, second empty. dnsmasq forwards other names to Quad9/Cloudflare. If the Pi is down: open the router by IP and set DNS back to automatic.
+- First host on the private CA: `npm.matrix.internal` (admin UI) with mTLS. Root CA and device cert installed on the Mac.
+- Found: NPMplus renews **every** cert through `ACME_SERVER` (now our CA), so the DuckDNS Let's Encrypt cert can't renew. Decided to move all services to `matrix.internal`, with mTLS only where needed, before that cert expires.

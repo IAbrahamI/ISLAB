@@ -50,8 +50,8 @@ docker network inspect nginxproxymanager_default >/dev/null 2>&1 || docker netwo
 
 ### B2. Get the repo and bring over your data
 ```bash
-git clone https://github.com/IAbrahamI/ISLAB.git ~/gateway
-cd ~/gateway
+git clone https://github.com/IAbrahamI/ISLAB.git ~/NPMPlus    # any folder name works
+cd ~/NPMPlus
 git checkout server-matrix-pki     # skip once it's merged into main
 sudo cp -a $OLD/data ./data
 sudo cp -a $OLD/letsencrypt ./letsencrypt
@@ -84,11 +84,11 @@ nslookup test.matrix.internal <BIND_IP>               # answers <BIND_IP>
 ```
 
 ### B5. Open the admin UI
-The UI only listens on the Pi. From your laptop:
-```bash
-ssh -L 8181:127.0.0.1:81 <user>@<pi-ip>
-```
-Then open https://localhost:8181 and log in with your old NPM account. Your browser warns about the certificate this one time. That's fine.
+The UI only listens on the Pi itself:
+- **On the Pi's desktop:** open https://localhost:81
+- **From your laptop:** run `ssh -L 8181:127.0.0.1:81 <user>@<pi-ip>`, then open https://localhost:8181
+
+Log in with your old NPM account. All your old proxy hosts are there. The browser warns about the certificate this one time. That's fine.
 
 ### B6. Make the Pi your home's DNS, then set up your first device
 Your devices have to ask the Pi for `*.matrix.internal` names, because only dnsmasq knows them. dnsmasq passes every other name on to public DNS (Quad9, Cloudflare), so normal websites keep working.
@@ -106,22 +106,30 @@ Then on the laptop you'll test with (part C has the details for each OS):
 In NPMplus, go to Certificates → Add certificate → **mTLS**. Name it `Matrix client CA` and upload `step-ca-data/certs/root_ca.crt`.
 
 ### B8. Move your services to `*.matrix.internal`
-For each existing proxy host:
-1. Certificates → Add certificate → **Certbot via HTTP** → `<name>.matrix.internal`.
-2. Edit the proxy host:
-   - **Details:** replace the DuckDNS name with `<name>.matrix.internal`. The forward host stays the container name.
-   - **TLS:** pick the new cert, turn on Force HTTPS, set mTLS certificate = `Matrix client CA`, and turn on **Make mTLS Optional**.
-   - **Advanced:** add `if ($mtls_block) { return 403; }`
-3. Open `https://<name>.matrix.internal` on your laptop. It should load without a warning, and give a 403 on a device without a cert.
+**All** services have to move. NPMplus sends every certificate, renewals included, to the one CA in `ACME_SERVER`, which is now yours. Your old DuckDNS Let's Encrypt cert therefore can't renew any more. Check its expiry date under Certificates and finish the move before then.
 
-Then do the admin UI: add a proxy host `npm.matrix.internal` → `https`, `127.0.0.1`, `81`, with the same TLS and Advanced settings. Keep the SSH tunnel as your way back in.
+**Start with the admin UI.** Add a proxy host:
+- **Details:** `npm.matrix.internal`, scheme `https://`, forward host `127.0.0.1`, port `81`
+- **TLS:** *Request a new certificate* (Certbot via HTTP), Force HTTPS on, mTLS certificate = `Matrix client CA`, **Make mTLS Optional** on
+- **Advanced:** `if ($mtls_block) { return 403; }`
+
+Open `https://npm.matrix.internal` on your laptop. It should load with no warning. A device without a device cert gets 403. `https://localhost:81` on the Pi stays your way back in.
+
+**Then each other service.** Edit its proxy host, and for each one decide whether it needs mTLS:
+
+| | Open to every home device | Locked to devices with a device cert (mTLS) |
+|---|---|---|
+| Details | Replace the DuckDNS name with `<name>.matrix.internal`. The forward host stays the container name | Same |
+| TLS | *Request a new certificate* (Certbot via HTTP), Force HTTPS on | Same, plus mTLS certificate = `Matrix client CA` and **Make mTLS Optional** on |
+| Advanced | Nothing | `if ($mtls_block) { return 403; }` |
+| Device needs | The root CA | The root CA and its device cert |
 
 **Why "optional" plus the Advanced line:** "required" also blocks your CA's renewal check on port 80, and certs would stop renewing after 7 days. The line still returns 403 to anyone without a valid, non-revoked device cert.
 
 ### B9. Clean up
 Once every service works under `matrix.internal`:
 1. In NPMplus, delete the old DuckDNS wildcard cert.
-2. On the Pi: `rm -rf ~/gateway/letsencrypt`. Later, once you're sure, also delete `$OLD`.
+2. On the Pi: `rm -rf ~/NPMPlus/letsencrypt`. Later, once you're sure, also delete `$OLD`.
 3. Stop the DuckDNS updater if you run one, and remove any router port forwards for 80/443.
 
 From now on your services are only reachable on your home network, and later over WireGuard (part D).
@@ -142,7 +150,7 @@ From now on your services are only reachable on your home network, and later ove
        external: true
        name: nginxproxymanager_default
    ```
-2. In NPMplus, do B8 for the new name. Any `<name>.matrix.internal` works with no DNS change. Names outside `matrix.internal` are refused by the CA.
+2. In NPMplus, add a proxy host as in B8: open, or locked with mTLS. Any `<name>.matrix.internal` works with no DNS change. Names outside `matrix.internal` are refused by the CA.
 
 ### Devices
 One cert per device, so you can block one without touching the others:
@@ -179,9 +187,17 @@ Afterwards, fully quit and reopen the browser. It asks which certificate to use 
 
 **DNS:** at home, the router sends every device to the Pi (B6). Over WireGuard it's one line in the VPN config (part D).
 
+### If the Pi is down
+Name lookups at home stop working, because the router asks the Pi. The connection itself still works, so anything you open by IP still loads.
+1. Open the router by its IP (printed on its label, e.g. `http://192.168.1.1`).
+2. Set its DNS back to automatic. Everything outside `matrix.internal` works again a minute later.
+3. Once the Pi is back, set the router's first DNS server to the Pi again.
+
+For just one device, set its DNS to `9.9.9.9` by hand in its network settings. The containers restart on their own after a reboot or power cut.
+
 ### Update
 ```bash
-cd ~/gateway && git pull && docker compose pull && docker compose up -d
+cd ~/NPMPlus && git pull && docker compose pull && docker compose up -d
 ```
 
 ### Backups
