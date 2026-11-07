@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # One-time hardening of the step-ca config created on first start.
-# Usage: ./pki-setup.sh islab.internal
+# Usage: ./pki-setup.sh matrix.internal
 #   - ACME provisioner: only issues for *.<domain>, server-only certs, 7-day lifetime
-#   - new "clients" provisioner: client-only certs (for mTLS), 30-day lifetime
+#   - "clients" provisioner: client-only certs (for mTLS), 1-year lifetime
 # Safe to re-run.
 set -euo pipefail
-DOMAIN="${1:-islab.internal}"
+DOMAIN="${1:-matrix.internal}"
 cd "$(dirname "$0")"
 
 docker compose exec -T step-ca test -f /home/step/config/ca.json \
@@ -20,7 +20,7 @@ docker compose exec -T -e DOMAIN="$DOMAIN" step-ca sh -euc '
     step ca provisioner add clients --type JWK --create \
       --password-file /home/step/secrets/password \
       --x509-template /home/step/templates/client.tpl \
-      --x509-default-dur 720h --x509-max-dur 2160h \
+      --x509-default-dur 8760h --x509-max-dur 8760h \
       --ca-config /home/step/config/ca.json
   fi
   cp ca.json ca.json.bak

@@ -33,3 +33,26 @@ Short record of what we did, kept for later documentation.
   - Re-tested: renewal works, and requests without a valid client cert are blocked.
 - Added `client-cert.sh` to issue and renew client certs, including a `.p12` for the macOS Keychain.
 - Setup steps: see `PKI-SETUP.md`.
+
+## 5. Live test on the Mac (2026-11-01)
+- Ran it in this order: `docker compose up -d step-ca`, then `./pki-setup.sh islab.internal`, then trusted the root CA in Keychain, then `docker compose up -d npmplus`.
+- Created the "Certbot via HTTP" certs `npm.islab.internal` and `app.islab.internal`. Both were issued by the private CA and are valid for 7 days.
+- Set up the admin UI behind `https://npm.islab.internal` (proxy to `https://127.0.0.1:81`, no mTLS).
+- Set up the test app `app.islab.internal` (proxy to the `whoami` container) with mTLS set to optional and `if ($mtls_block) { return 403; }`.
+  - Without a client cert the page returns 403. With the `macbook` client cert (curl and browser) the whoami page loads.
+- Problem found: the macOS Keychain couldn't import the `.p12` ("Unable to decode the provided data").
+  - Fix: `client-cert.sh` now builds the `.p12` with `--legacy` (SHA1/3DES), which Keychain accepts.
+- Browser tip: after importing a client cert, quit the browser fully (Cmd+Q) before retrying. Otherwise it keeps reusing the old connection that had no cert.
+
+## 6. Plan for the home server (2026-11-07)
+- Pushed the Mac test setup to GitHub (private repo `ISLAB`). Secrets are kept out by `.gitignore`.
+- Decided that **all** certificates, server certs included, come from our own CA, not Let's Encrypt.
+- Naming: rejected `*.aby-host-network.duckdns.org`, because we don't own that name, and `aby.internal`. Chose **`*.matrix.internal`**.
+  - `.internal` is officially reserved for private networks, so it never clashes with a real site.
+- Server package (`SERVER-SETUP.md`):
+  - Migrates NPM to NPMplus; NPM's `letsencrypt` folder is mounted once.
+  - Fresh CA named "Matrix".
+  - **dnsmasq** wildcard: `*.matrix.internal` → NPMplus. New services need no aliases and no `/etc/hosts`.
+  - Fixed container IPs. step-ca has no published port. NPMplus listens only on `BIND_IP` (LAN IP now, WireGuard IP later). Admin UI only on `127.0.0.1:81`.
+  - Client certs last 1 year, one per device. Added `./client-cert.sh revoke <device>`, which blocks the device in NPMplus immediately (revoked-serials list) and marks it revoked in step-ca.
+- Tested everything in a clean test environment except the real NPM data migration, WireGuard and non-Mac imports.
