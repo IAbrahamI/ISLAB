@@ -90,9 +90,15 @@ ssh -L 8181:127.0.0.1:81 <user>@<pi-ip>
 ```
 Then open https://localhost:8181 and log in with your old NPM account. Your browser warns about the certificate this one time. That's fine.
 
-### B6. Set up your first device
-Do this on the laptop you'll test with. Part C has the details for each OS.
-1. Point its DNS at the Pi (`BIND_IP`).
+### B6. Make the Pi your home's DNS, then set up your first device
+Your devices have to ask the Pi for `*.matrix.internal` names, because only dnsmasq knows them. dnsmasq passes every other name on to public DNS (Quad9, Cloudflare), so normal websites keep working.
+
+**On the router (once):** in its DNS settings, set the first DNS server to the Pi's IP and leave the second one empty. A public server as the second one would answer "unknown" for `matrix.internal` now and then.
+Check from a laptop: normal sites still load, and `dscacheutil -q host -a name test.matrix.internal` (Mac) or `nslookup test.matrix.internal` (Windows, Linux) answers the Pi's IP.
+To undo: set the router's DNS back to automatic.
+
+Then on the laptop you'll test with (part C has the details for each OS):
+1. Turn Wi-Fi off and on, so it picks up the new DNS.
 2. Install the root CA: copy `step-ca-data/certs/root_ca.crt` from the Pi.
 3. Make and install a device cert. On the Pi: `./client-cert.sh new macbook`. Copy `client-certs/macbook.p12` over and import it with the printed password.
 
@@ -171,7 +177,7 @@ Copy `.p12` files with scp, USB or AirDrop, never over chat or email. The privat
 
 Afterwards, fully quit and reopen the browser. It asks which certificate to use the first time.
 
-**DNS:** each device needs the Pi (`BIND_IP`) as its DNS server. That's easiest on the router (DHCP DNS = the Pi), or per device. With WireGuard it's one line in the VPN config.
+**DNS:** at home, the router sends every device to the Pi (B6). Over WireGuard it's one line in the VPN config (part D).
 
 ### Update
 ```bash
