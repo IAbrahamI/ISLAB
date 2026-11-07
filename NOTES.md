@@ -32,7 +32,7 @@ Short record of what we did, kept for later documentation.
   - **Fix:** use "verify client optional" plus an nginx rule that returns 403 without a valid client cert and leaves only the ACME challenge path open.
   - Re-tested: renewal works, and requests without a valid client cert are blocked.
 - Added `client-cert.sh` to issue and renew client certs, including a `.p12` for the macOS Keychain.
-- Setup steps: see `PKI-SETUP.md`.
+- Setup steps were in the Mac test guide (removed from the repo; see git history).
 
 ## 5. Live test on the Mac (2026-11-01)
 - Ran it in this order: `docker compose up -d step-ca`, then `./pki-setup.sh islab.internal`, then trusted the root CA in Keychain, then `docker compose up -d npmplus`.
@@ -53,6 +53,13 @@ Short record of what we did, kept for later documentation.
   - Migrates NPM to NPMplus; NPM's `letsencrypt` folder is mounted once.
   - Fresh CA named "Matrix".
   - **dnsmasq** wildcard: `*.matrix.internal` → NPMplus. New services need no aliases and no `/etc/hosts`.
-  - Fixed container IPs. step-ca has no published port. NPMplus listens only on `BIND_IP` (LAN IP now, WireGuard IP later). Admin UI only on `127.0.0.1:81`.
+  - step-ca has no published port. NPMplus listens only on `BIND_IP` (LAN IP now, WireGuard IP later). Admin UI only on `127.0.0.1:81`.
   - Client certs last 1 year, one per device. Added `./client-cert.sh revoke <device>`, which blocks the device in NPMplus immediately (revoked-serials list) and marks it revoked in step-ca.
 - Tested everything in a clean test environment except the real NPM data migration, WireGuard and non-Mac imports.
+- Networks: the stack is called **gateway** (no project name in it). NPMplus also joins the existing `nginxproxymanager_default` network, so the app stacks stay unchanged.
+- Fix: dnsmasq first answered with NPMplus's Docker IP (172.30.10.10), which devices can't reach. It now answers with `BIND_IP`, which devices and step-ca both reach. Only dnsmasq keeps a fixed IP (172.30.10.53), because step-ca's `dns:` setting needs an IP. Tested.
+
+## 7. Clean repo and deploy guide (2026-11-07)
+- The server is a **Raspberry Pi** (aarch64). All three images have arm64 builds. cachyOS is only where I edit the repo.
+- Removed the Mac test guide. Moved the two mTLS files from `data/custom_nginx/` to `nginx/` (mounted into NPMplus), so `data/` is purely runtime and fully ignored by git.
+- One guide to follow: `DEPLOY.md` (migration, first deploy, everyday use, WireGuard later). It replaces `SERVER-SETUP.md`.
