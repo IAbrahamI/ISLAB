@@ -1,26 +1,44 @@
-# NPMplus + private PKI (smallstep step-ca) with ACME auto-renewal and mTLS.
-# Replace islab.internal / app.islab.internal with your own names (see README.md).
+# Home server: NPMplus + private PKI (step-ca) + wildcard DNS for *.matrix.internal
+# Settings live in .env (copy .env.example). See SERVER-SETUP.md.
 name: islab
 
 services:
+  dnsmasq:
+    # Answers every *.matrix.internal with NPMplus. Used by step-ca (to check
+    # names before issuing certs) and by your devices over the VPN.
+    image: docker.io/dockurr/dnsmasq:2.93
+    container_name: dnsmasq
+    restart: unless-stopped
+    volumes:
+      - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    ports:
+      - "${BIND_IP}:53:53/udp"
+      - "${BIND_IP}:53:53/tcp"
+    networks:
+      islab:
+        ipv4_address: 172.30.10.53
+
   step-ca:
     image: docker.io/smallstep/step-ca:0.30.2
     container_name: step-ca
     restart: unless-stopped
     environment:
-      - TZ=Europe/Zurich
+      - TZ=${TZ}
       # Only used on the very first start, when ./step-ca-data is empty:
-      - DOCKER_STEPCA_INIT_NAME=ISLAB Private CA
+      - DOCKER_STEPCA_INIT_NAME=Matrix
       - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
       - DOCKER_STEPCA_INIT_ACME=true
     volumes:
       - ./step-ca-data:/home/step
-    ports:
-      # Bound to localhost only, so the step CLI on your Mac can reach it.
-      # Do not expose the CA to your LAN unless you mean to.
-      - "127.0.0.1:9000:9000"
+    # No published port: only NPMplus (over the Docker network) and
+    # client-cert.sh (docker exec) talk to the CA.
+    dns:
+      - 172.30.10.53
     networks:
-      - islab
+      islab:
+        ipv4_address: 172.30.10.20
+    depends_on:
+      - dnsmasq
     healthcheck:
       test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
       interval: 10s
@@ -32,43 +50,37 @@ services:
     image: docker.io/zoeyvid/npmplus:latest
     container_name: npmplus
     restart: unless-stopped
+    labels:
+      - wud.watch.digest=true
     depends_on:
       step-ca:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "81:81"        # Admin UI
-      - "443:443/tcp"
-      - "443:443/udp"  # HTTP/3 (QUIC)
+      # Only on BIND_IP (your WireGuard address once the VPN runs).
+      - "${BIND_IP}:80:80"
+      - "${BIND_IP}:443:443/tcp"
+      - "${BIND_IP}:443:443/udp"
+      # Admin UI only from the server itself; normally use https://npm.matrix.internal
+      - "127.0.0.1:81:81"
     volumes:
-      - ./npmplus-data:/data
+      - ./data:/data
+      # MIGRATION ONLY: your old NPM certs. Remove after the first successful start.
+      - ./letsencrypt:/etc/letsencrypt
       # Root of the private CA, read-only, so certbot can verify step-ca's TLS.
       - ./step-ca-data/certs:/pki:ro
     environment:
-      - TZ=Europe/Zurich
-      - ACME_EMAIL=${ACME_EMAIL}               # set in .env (not committed)
-      # Send every certificate request to the private CA instead of Let's Encrypt:
+      - TZ=${TZ}
+      - ACME_EMAIL=${ACME_EMAIL}
+      # All new certificates come from your own CA:
       - ACME_SERVER=https://step-ca:9000/acme/acme/directory
-      # certbot (python requests) trusts this CA bundle for the ACME connection,
-      # so ACME_SERVER_TLS_VERIFY can stay at its secure default (true).
       - REQUESTS_CA_BUNDLE=/pki/root_ca.crt
     networks:
       islab:
-        # step-ca validates HTTP-01 challenges by connecting to each hostname on
-        # port 80. These aliases make every proxied hostname resolve to NPMplus
-        # inside the Docker network. Add one line per proxy host you create.
-        aliases:
-          - app.islab.internal
-          - npm.islab.internal
-
-  # Tiny test app: echoes request details. Remove once you have real apps.
-  whoami:
-    image: docker.io/traefik/whoami:v1.10
-    container_name: whoami
-    restart: unless-stopped
-    networks:
-      - islab
+        ipv4_address: 172.30.10.10   # dnsmasq points *.matrix.internal here
 
 networks:
   islab:
     name: islab
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24   # change if it clashes with another network on the server

@@ -1,14 +1,16 @@
 # secrets / CA keys / runtime data – never commit
 step-ca-data/
 client-certs/
+letsencrypt/
 *.key
 *.p12
 .env
 env.txt
 .DS_Store
 
-# NPMplus runtime data, except the mTLS rule we maintain by hand
-npmplus-data/*
-!npmplus-data/custom_nginx/
-npmplus-data/custom_nginx/*
-!npmplus-data/custom_nginx/http.conf
+# NPMplus runtime data, except the mTLS files we maintain
+data/*
+!data/custom_nginx/
+data/custom_nginx/*
+!data/custom_nginx/http.conf
+!data/custom_nginx/revoked-serials.map
