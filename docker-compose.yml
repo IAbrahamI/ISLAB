@@ -1,0 +1,74 @@
+# NPMplus + private PKI (smallstep step-ca) with ACME auto-renewal and mTLS.
+# Replace islab.internal / app.islab.internal with your own names (see README.md).
+name: islab
+
+services:
+  step-ca:
+    image: docker.io/smallstep/step-ca:0.30.2
+    container_name: step-ca
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Zurich
+      # Only used on the very first start, when ./step-ca-data is empty:
+      - DOCKER_STEPCA_INIT_NAME=ISLAB Private CA
+      - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
+      - DOCKER_STEPCA_INIT_ACME=true
+    volumes:
+      - ./step-ca-data:/home/step
+    ports:
+      # Bound to localhost only, so the step CLI on your Mac can reach it.
+      # Do not expose the CA to your LAN unless you mean to.
+      - "127.0.0.1:9000:9000"
+    networks:
+      - islab
+    healthcheck:
+      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  npmplus:
+    image: docker.io/zoeyvid/npmplus:latest
+    container_name: npmplus
+    restart: unless-stopped
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "81:81"        # Admin UI
+      - "443:443/tcp"
+      - "443:443/udp"  # HTTP/3 (QUIC)
+    volumes:
+      - ./npmplus-data:/data
+      # Root of the private CA, read-only, so certbot can verify step-ca's TLS.
+      - ./step-ca-data/certs:/pki:ro
+    environment:
+      - TZ=Europe/Zurich
+      - ACME_EMAIL=${ACME_EMAIL}               # set in .env (not committed)
+      # Send every certificate request to the private CA instead of Let's Encrypt:
+      - ACME_SERVER=https://step-ca:9000/acme/acme/directory
+      # certbot (python requests) trusts this CA bundle for the ACME connection,
+      # so ACME_SERVER_TLS_VERIFY can stay at its secure default (true).
+      - REQUESTS_CA_BUNDLE=/pki/root_ca.crt
+    networks:
+      islab:
+        # step-ca validates HTTP-01 challenges by connecting to each hostname on
+        # port 80. These aliases make every proxied hostname resolve to NPMplus
+        # inside the Docker network. Add one line per proxy host you create.
+        aliases:
+          - app.islab.internal
+          - npm.islab.internal
+
+  # Tiny test app: echoes request details. Remove once you have real apps.
+  whoami:
+    image: docker.io/traefik/whoami:v1.10
+    container_name: whoami
+    restart: unless-stopped
+    networks:
+      - islab
+
+networks:
+  islab:
+    name: islab
