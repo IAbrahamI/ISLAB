@@ -77,10 +77,18 @@ services:
     networks:
       islab:
         ipv4_address: 172.30.10.10   # dnsmasq points *.matrix.internal here
+      apps: {}                       # your app stacks join this network
 
 networks:
+  # Internal network for dnsmasq, step-ca and NPMplus. Fixed IPs, because dnsmasq
+  # can only point *.matrix.internal at an IP address, not at a container name.
   islab:
     name: islab
     ipam:
       config:
         - subnet: 172.30.10.0/24   # change if it clashes with another network on the server
+  # Your existing shared network: app stacks that list nginxproxymanager_default
+  # keep working unchanged, and NPMplus reaches them by container name.
+  apps:
+    external: true
+    name: nginxproxymanager_default

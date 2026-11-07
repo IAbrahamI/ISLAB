@@ -12,7 +12,7 @@ All certificates come from your own CA, step-ca, named "Matrix". Every service l
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | The three services, with fixed IPs on the `islab` network (`172.30.10.0/24`) |
+| `docker-compose.yml` | The three services on the internal `islab` network (fixed IPs, `172.30.10.0/24`). NPMplus also joins your existing `nginxproxymanager_default` network to reach your apps |
 | `.env.example` → `.env` | `ACME_EMAIL`, `TZ`, `BIND_IP` |
 | `dnsmasq/dnsmasq.conf` | The `*.matrix.internal` wildcard rule |
 | `pki-setup.sh` | One-time CA tuning: domain policy, lifetimes, server-only vs client-only certs |
@@ -79,7 +79,7 @@ The file is `step-ca-data/certs/root_ca.crt`. Copy it over with AirDrop, USB or 
 ## 4. Add a service
 
 1. In NPMplus, go to Certificates → Add certificate → **Certbot via HTTP** → `grafana.matrix.internal`. Any name under `matrix.internal` works with no extra config. Other names are refused by the CA.
-2. Add a proxy host for that name, pointing at the service's container name and port.
+2. Add a proxy host for that name, pointing at the service's container name and port. The service's compose must join the `nginxproxymanager_default` network, as your existing stacks already do.
    - **TLS tab:** pick the cert, turn on Force HTTPS, set mTLS certificate = *Matrix client CA*, and turn on **Make mTLS Optional**.
    - **Advanced tab:** `if ($mtls_block) { return 403; }`
 3. Do this once, before the first host: Certificates → Add certificate → **mTLS** → name it "Matrix client CA" → upload `step-ca-data/certs/root_ca.crt`.
