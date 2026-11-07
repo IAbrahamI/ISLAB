@@ -1,5 +1,5 @@
 # Home server: NPMplus + private PKI (step-ca) + wildcard DNS for *.matrix.internal
-# Settings live in .env (copy .env.example). See SERVER-SETUP.md.
+# Settings live in .env (copy .env.example). See DEPLOY.md.
 name: gateway
 
 services:
@@ -67,6 +67,8 @@ services:
       - "127.0.0.1:81:81"
     volumes:
       - ./data:/data
+      # mTLS rules and the revoked-device list (see nginx/). NPMplus loads them automatically.
+      - ./nginx:/data/custom_nginx
       # MIGRATION ONLY: your old NPM certs. Remove after the first successful start.
       - ./letsencrypt:/etc/letsencrypt
       # Root of the private CA, read-only, so certbot can verify step-ca's TLS.

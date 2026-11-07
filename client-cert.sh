@@ -3,7 +3,7 @@
 #   ./client-cert.sh new    <device>  -> client-certs/<device>.{crt,key,p12}  (1 year)
 #   ./client-cert.sh renew  <device>  -> renews before expiry, rebuilds the .p12
 #   ./client-cert.sh revoke <device>  -> blocks the cert in NPMplus immediately
-# One cert per device (e.g. macbook, pixel, thinkpad). Import guide: SERVER-SETUP.md
+# One cert per device (e.g. macbook, pixel, thinkpad). Import guide: DEPLOY.md
 set -euo pipefail
 cmd="${1:-}"; name="${2:-}"
 [ -n "$cmd" ] && [ -n "$name" ] || { sed -n 2,6p "$0"; exit 1; }
@@ -16,7 +16,7 @@ W=/home/step/client-work; docker compose exec -T step-ca sh -c "rm -rf $W && mkd
 if [ "$cmd" = revoke ]; then
   crt="client-certs/$name.crt"
   [ -f "$crt" ] || { echo "No $crt found."; exit 1; }
-  map=data/custom_nginx/revoked-serials.map
+  map=nginx/revoked-serials.map
   serial_hex="$(openssl x509 -noout -serial -in "$crt" | cut -d= -f2)"
   if grep -q "^$serial_hex " "$map" 2>/dev/null; then echo "$name is already revoked."; exit 0; fi
   # 1) NPMplus: block this serial right away

@@ -8,9 +8,9 @@ letsencrypt/
 env.txt
 .DS_Store
 
-# NPMplus runtime data, except the mTLS files we maintain
-data/*
-!data/custom_nginx/
-data/custom_nginx/*
-!data/custom_nginx/http.conf
-!data/custom_nginx/revoked-serials.map
+# NPMplus runtime data (database, certs, logs)
+data/
+# NPMplus adds empty placeholder files to nginx/; keep only our two
+nginx/*
+!nginx/http.conf
+!nginx/revoked-serials.map
