@@ -1,6 +1,6 @@
 # Home server: NPMplus + private PKI (step-ca) + wildcard DNS for *.matrix.internal
 # Settings live in .env (copy .env.example). See SERVER-SETUP.md.
-name: islab
+name: gateway
 
 services:
   dnsmasq:
@@ -9,14 +9,18 @@ services:
     image: docker.io/dockurr/dnsmasq:2.93
     container_name: dnsmasq
     restart: unless-stopped
+    # The wildcard answer is BIND_IP from .env: the address where NPMplus listens.
+    # Your devices and step-ca both reach NPMplus there.
+    entrypoint: ["dnsmasq", "--conf-file=/etc/dnsmasq.conf", "--keep-in-foreground",
+                 "--log-facility=-", "--no-resolv", "--address=/matrix.internal/${BIND_IP}"]
     volumes:
       - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
     ports:
       - "${BIND_IP}:53:53/udp"
       - "${BIND_IP}:53:53/tcp"
     networks:
-      islab:
-        ipv4_address: 172.30.10.53
+      gateway:
+        ipv4_address: 172.30.10.53   # fixed, so step-ca can use it as its DNS server
 
   step-ca:
     image: docker.io/smallstep/step-ca:0.30.2
@@ -35,8 +39,7 @@ services:
     dns:
       - 172.30.10.53
     networks:
-      islab:
-        ipv4_address: 172.30.10.20
+      - gateway
     depends_on:
       - dnsmasq
     healthcheck:
@@ -75,15 +78,14 @@ services:
       - ACME_SERVER=https://step-ca:9000/acme/acme/directory
       - REQUESTS_CA_BUNDLE=/pki/root_ca.crt
     networks:
-      islab:
-        ipv4_address: 172.30.10.10   # dnsmasq points *.matrix.internal here
+      gateway: {}
       apps: {}                       # your app stacks join this network
 
 networks:
-  # Internal network for dnsmasq, step-ca and NPMplus. Fixed IPs, because dnsmasq
-  # can only point *.matrix.internal at an IP address, not at a container name.
-  islab:
-    name: islab
+  # Internal network for dnsmasq, step-ca and NPMplus. It has a fixed subnet
+  # because step-ca's "dns:" setting needs dnsmasq's IP, not its name.
+  gateway:
+    name: gateway
     ipam:
       config:
         - subnet: 172.30.10.0/24   # change if it clashes with another network on the server

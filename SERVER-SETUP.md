@@ -4,7 +4,7 @@ All certificates come from your own CA, step-ca, named "Matrix". Every service l
 
 | Service | Role |
 |---|---|
-| **dnsmasq** | Answers every `*.matrix.internal` with NPMplus. step-ca uses it to check names, and your devices use it too. No aliases or `/etc/hosts` needed. |
+| **dnsmasq** | Answers every `*.matrix.internal` with `BIND_IP`, where NPMplus listens. step-ca uses it to check names, and your devices use it too. No aliases or `/etc/hosts` needed. |
 | **step-ca** | Your CA. It issues server certs (7 days, auto-renewed) and client certs (1 year, one per device). It has no published port. |
 | **NPMplus** | Reverse proxy. It listens only on `BIND_IP`. The admin UI is only on `127.0.0.1:81`. |
 
@@ -12,7 +12,7 @@ All certificates come from your own CA, step-ca, named "Matrix". Every service l
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | The three services on the internal `islab` network (fixed IPs, `172.30.10.0/24`). NPMplus also joins your existing `nginxproxymanager_default` network to reach your apps |
+| `docker-compose.yml` | The three services on the internal `gateway` network (`172.30.10.0/24`; only dnsmasq has a fixed IP). NPMplus also joins your existing `nginxproxymanager_default` network to reach your apps |
 | `.env.example` → `.env` | `ACME_EMAIL`, `TZ`, `BIND_IP` |
 | `dnsmasq/dnsmasq.conf` | The `*.matrix.internal` wildcard rule |
 | `pki-setup.sh` | One-time CA tuning: domain policy, lifetimes, server-only vs client-only certs |
@@ -60,7 +60,7 @@ dnsmasq listens on `BIND_IP:53`.
 - **With WireGuard:** put `DNS = 10.8.0.1` in each device's WireGuard config. Done.
 - **Before WireGuard:** set the device's DNS server to the server's LAN IP. If your router supports it, add a rule there that forwards `matrix.internal` to the server.
 
-Check it from any device: `nslookup anything.matrix.internal <BIND_IP>` should return the server.
+Check it from any device: `nslookup anything.matrix.internal <BIND_IP>` should return `BIND_IP`.
 
 ## 3. Trust the root CA on each device (once)
 
@@ -142,7 +142,7 @@ Tested on 7 Nov 2026 in a clean test environment (NPMplus 2026-10-22-r1, step-ca
 | Check | Result |
 |---|---|
 | CA named Matrix (Matrix Root CA → Matrix Intermediate CA) | ✅ |
-| dnsmasq resolves any `*.matrix.internal` to NPMplus; other names still resolve | ✅ |
+| dnsmasq answers any `*.matrix.internal` with `BIND_IP`; step-ca validates through it, and a device reaches the app through it | ✅ |
 | Certs for `app.`, `npm.` and a never-configured `brand-new.matrix.internal`, no aliases | ✅ |
 | Cert for `evil.example.com` | refused ✅ |
 | Client cert valid for 1 year | ✅ |

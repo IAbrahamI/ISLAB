@@ -53,6 +53,8 @@ Short record of what we did, kept for later documentation.
   - Migrates NPM to NPMplus; NPM's `letsencrypt` folder is mounted once.
   - Fresh CA named "Matrix".
   - **dnsmasq** wildcard: `*.matrix.internal` → NPMplus. New services need no aliases and no `/etc/hosts`.
-  - Fixed container IPs. step-ca has no published port. NPMplus listens only on `BIND_IP` (LAN IP now, WireGuard IP later). Admin UI only on `127.0.0.1:81`.
+  - step-ca has no published port. NPMplus listens only on `BIND_IP` (LAN IP now, WireGuard IP later). Admin UI only on `127.0.0.1:81`.
   - Client certs last 1 year, one per device. Added `./client-cert.sh revoke <device>`, which blocks the device in NPMplus immediately (revoked-serials list) and marks it revoked in step-ca.
 - Tested everything in a clean test environment except the real NPM data migration, WireGuard and non-Mac imports.
+- Networks: the stack is called **gateway** (no project name in it). NPMplus also joins the existing `nginxproxymanager_default` network, so the app stacks stay unchanged.
+- Fix: dnsmasq first answered with NPMplus's Docker IP (172.30.10.10), which devices can't reach. It now answers with `BIND_IP`, which devices and step-ca both reach. Only dnsmasq keeps a fixed IP (172.30.10.53), because step-ca's `dns:` setting needs an IP. Tested.
