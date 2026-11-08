@@ -1,6 +1,6 @@
 # Deploy guide: NPMplus with your own CA on the Raspberry Pi
 
-Follow this from top to bottom once. Parts A and B are the migration and first deploy. Part C is everyday use. Part D is for later.
+Follow this from top to bottom once. Parts A and B are the migration and first deploy. Part C is everyday use. Part D is WireGuard.
 
 **What you end up with:** every service under `*.matrix.internal`, with all certificates from your own CA ("Matrix"), and every site locked to devices that hold one of your device certs.
 
@@ -145,9 +145,9 @@ Open `https://npm.matrix.internal` on your laptop. It should load with no warnin
 Once every service works under `matrix.internal`:
 1. In NPMplus, delete the old DuckDNS wildcard cert.
 2. On the Pi: `rm -rf ~/NPMPlus/letsencrypt`. Later, once you're sure, also delete `$OLD`.
-3. Stop the DuckDNS updater if you run one, and remove any router port forwards for 80/443.
+3. Remove any router port forwards for 80/443. **Keep the DuckDNS updater** if your WireGuard clients connect to a DuckDNS name: it keeps that name pointing at your changing home IP.
 
-From now on your services are only reachable on your home network, and later over WireGuard (part D).
+From now on your services are only reachable on your home network and over WireGuard (part D).
 
 ---
 
@@ -235,15 +235,16 @@ One thing to check first: **Android apps** (not Chrome) ignore CAs you install y
 
 ---
 
-## D. Later: WireGuard only
-Once WireGuard runs on the Pi (e.g. `wg0` = `10.8.0.1`):
-1. In `.env`, set `BIND_IP=10.8.0.1` and run `docker compose up -d`. NPMplus and dnsmasq then listen only on the VPN.
-2. Docker has to start after WireGuard, or binding to `10.8.0.1` fails at boot:
-   ```bash
-   sudo systemctl enable wg-quick@wg0
-   sudo systemctl edit docker      # add the two lines below
-   # [Unit]
-   # After=wg-quick@wg0.service
-   ```
-3. Put `DNS = 10.8.0.1` in each phone's WireGuard config. On computers, change the B6 rule from the LAN IP to `10.8.0.1`. From then on, the internal sites only work with the VPN on, even at home.
-4. On the router, forward only UDP 51820 to the Pi.
+## D. WireGuard (wg-easy)
+WireGuard runs separately in **wg-easy** and doesn't depend on this stack. These settings let VPN devices, mainly the phone, open the `matrix.internal` sites from anywhere. Nothing changes on the Pi: NPMplus and dnsmasq stay on `BIND_IP` (the LAN IP), and wg-easy sends VPN traffic there.
+
+1. **wg-easy → Admin Panel → Config:**
+   - **Host:** your DuckDNS name. Keep the DuckDNS updater running, so the name follows your changing home IP.
+   - **Client DNS:** the Pi's LAN IP. dnsmasq answers `matrix.internal` and passes every other name on.
+   - **Client Allowed IPs:** `0.0.0.0/0, ::/0` (all traffic through home) or only your home network, e.g. `192.168.1.0/24`. Both work.
+2. **Existing clients:** new defaults only apply to new clients. Edit each existing client's DNS and Allowed IPs, or recreate it, then scan the new QR code in the WireGuard app.
+3. **On the phone:** install the root CA once, plus a device cert for mTLS-locked sites (part C).
+4. **Test away from home:** Wi-Fi off, mobile data on, VPN on, then open `https://npm.matrix.internal`. It should load with no warning. Tested and working on 8 Nov 2026.
+5. **Router:** forward only UDP 51820 to the Pi. WireGuard doesn't use TCP.
+
+**Optional, VPN-only mode:** to make the sites reachable *only* over the VPN, set `BIND_IP` to the wg-easy address of the Pi and point every device at it. It's more locked down, but then even at home the sites need the VPN on. Not used for now.
