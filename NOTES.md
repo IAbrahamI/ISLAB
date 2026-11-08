@@ -69,3 +69,6 @@ Short record of what we did, kept for later documentation.
 - Router: first DNS server = the Pi, second empty. dnsmasq forwards other names to Quad9/Cloudflare. If the Pi is down: open the router by IP and set DNS back to automatic.
 - First host on the private CA: `npm.matrix.internal` (admin UI) with mTLS. Root CA and device cert installed on the Mac.
 - Found: NPMplus renews **every** cert through `ACME_SERVER` (now our CA), so the DuckDNS Let's Encrypt cert can't renew. Decided to move all services to `matrix.internal`, with mTLS only where needed, before that cert expires.
+- 2026-11-07: First the router's DNS pointed at the Pi, which works for all devices, but the Pi became a single point of failure for the whole house.
+- 2026-11-08: Switched to split DNS. Each computer sends only `*.matrix.internal` to the Pi (Mac `/etc/resolver`, Linux systemd-resolved `~matrix.internal`, Windows NRPT), and the router's DNS is back on automatic. If the Pi is down, only the internal sites are affected. Phones will use WireGuard.
+- 2026-11-08: WireGuard (wg-easy): client DNS set to the Pi's LAN IP, phone re-scanned. `matrix.internal` sites work over the VPN on mobile data.

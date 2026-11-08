@@ -1,6 +1,6 @@
 # Deploy guide: NPMplus with your own CA on the Raspberry Pi
 
-Follow this from top to bottom once. Parts A and B are the migration and first deploy. Part C is everyday use. Part D is for later.
+Follow this from top to bottom once. Parts A and B are the migration and first deploy. Part C is everyday use. Part D is WireGuard.
 
 **What you end up with:** every service under `*.matrix.internal`, with all certificates from your own CA ("Matrix"), and every site locked to devices that hold one of your device certs.
 
@@ -91,17 +91,31 @@ The UI only listens on the Pi itself:
 
 Log in with your old NPM account. All your old proxy hosts are there. The browser warns about the certificate this one time. That's fine.
 
-### B6. Make the Pi your home's DNS, then set up your first device
-Your devices have to ask the Pi for `*.matrix.internal` names, because only dnsmasq knows them. dnsmasq passes every other name on to public DNS (Quad9, Cloudflare), so normal websites keep working.
+### B6. Let your devices find `*.matrix.internal`, then set up your first device
+Only dnsmasq on the Pi knows the `matrix.internal` names, so your devices have to ask the Pi for them. dnsmasq passes every other name on to public DNS (Quad9, Cloudflare). We did this in two steps.
 
-**On the router (once):** in its DNS settings, set the first DNS server to the Pi's IP and leave the second one empty. A public server as the second one would answer "unknown" for `matrix.internal` now and then.
-Check from a laptop: normal sites still load, and `dscacheutil -q host -a name test.matrix.internal` (Mac) or `nslookup test.matrix.internal` (Windows, Linux) answers the Pi's IP.
-To undo: set the router's DNS back to automatic.
+**Step 1 (first setup): the router sends all devices to the Pi.**
+In the router's DNS settings, set the first DNS server to the Pi's IP and leave the second one empty. A public server as the second one would answer "unknown" for `matrix.internal` now and then. Turn Wi-Fi off and on on each device so it picks up the change.
+- Pro: no setup per device, and phones work too.
+- Con: if the Pi is down, name lookups stop working for the whole house. The fix is to open the router by its IP (e.g. `http://192.168.1.1`) and set DNS back to automatic.
+
+**Step 2 (current setup): split DNS per computer.**
+To make the internet independent of the Pi, each computer gets **one rule, once**: names ending in `.matrix.internal` go to the Pi, and everything else goes to the router as usual. New services need nothing extra. If the Pi is down, only the internal sites are affected. Set up the rule on each computer first, then set the router's DNS back to automatic.
+
+Replace `<Pi-IP>` with the Pi's IP:
+
+| Device | Set up once | Test |
+|---|---|---|
+| Mac | `sudo mkdir -p /etc/resolver && echo "nameserver <Pi-IP>" \| sudo tee /etc/resolver/matrix.internal` | `dscacheutil -q host -a name npm.matrix.internal` |
+| Linux (systemd-resolved, e.g. CachyOS) | `sudo mkdir -p /etc/systemd/resolved.conf.d && printf '[Resolve]\nDNS=<Pi-IP>\nDomains=~matrix.internal\n' \| sudo tee /etc/systemd/resolved.conf.d/matrix.conf && sudo systemctl restart systemd-resolved` | `resolvectl query npm.matrix.internal` |
+| Windows (PowerShell as admin) | `Add-DnsClientNrptRule -Namespace ".matrix.internal" -NameServers "<Pi-IP>"` | `Resolve-DnsName npm.matrix.internal` |
+| Phones | Not possible per name. They reach internal sites through WireGuard (part D) | |
+
+Each test should answer the Pi's IP. On a Mac, `nslookup` ignores the resolver file, so use the command above.
 
 Then on the laptop you'll test with (part C has the details for each OS):
-1. Turn Wi-Fi off and on, so it picks up the new DNS.
-2. Install the root CA: copy `step-ca-data/certs/root_ca.crt` from the Pi.
-3. Make and install a device cert. On the Pi: `./client-cert.sh new macbook`. Copy `client-certs/macbook.p12` over and import it with the printed password.
+1. Install the root CA: copy `step-ca-data/certs/root_ca.crt` from the Pi.
+2. Make and install a device cert. On the Pi: `./client-cert.sh new macbook`. Copy `client-certs/macbook.p12` over and import it with the printed password.
 
 ### B7. Turn on mTLS (once)
 In NPMplus, go to Certificates → Add certificate → **mTLS**. Name it `Matrix client CA` and upload `step-ca-data/certs/root_ca.crt`.
@@ -131,9 +145,9 @@ Open `https://npm.matrix.internal` on your laptop. It should load with no warnin
 Once every service works under `matrix.internal`:
 1. In NPMplus, delete the old DuckDNS wildcard cert.
 2. On the Pi: `rm -rf ~/NPMPlus/letsencrypt`. Later, once you're sure, also delete `$OLD`.
-3. Stop the DuckDNS updater if you run one, and remove any router port forwards for 80/443.
+3. Remove any router port forwards for 80/443. **Keep the DuckDNS updater** if your WireGuard clients connect to a DuckDNS name: it keeps that name pointing at your changing home IP.
 
-From now on your services are only reachable on your home network, and later over WireGuard (part D).
+From now on your services are only reachable on your home network and over WireGuard (part D).
 
 ---
 
@@ -186,15 +200,13 @@ Copy `.p12` files with scp, USB or AirDrop, never over chat or email. The privat
 
 Afterwards, fully quit and reopen the browser. It asks which certificate to use the first time.
 
-**DNS:** at home, the router sends every device to the Pi (B6). Over WireGuard it's one line in the VPN config (part D).
+**DNS:** each computer has the one `matrix.internal` rule from B6 (step 2). Phones use WireGuard (part D).
 
 ### If the Pi is down
-Name lookups at home stop working, because the router asks the Pi. The connection itself still works, so anything you open by IP still loads.
-1. Open the router by its IP (printed on its label, e.g. `http://192.168.1.1`).
-2. Set its DNS back to automatic. Everything outside `matrix.internal` works again a minute later.
-3. Once the Pi is back, set the router's first DNS server to the Pi again.
+- **With split DNS (current):** only the `matrix.internal` sites stop working. Everything else uses the router's DNS and isn't affected.
+- **With the router pointing at the Pi (step 1 of B6):** all name lookups at home stop. Open the router by its IP and set DNS back to automatic.
 
-For just one device, set its DNS to `9.9.9.9` by hand in its network settings. The containers restart on their own after a reboot or power cut.
+The containers restart on their own after a reboot or power cut.
 
 ### Update
 ```bash
@@ -223,15 +235,16 @@ One thing to check first: **Android apps** (not Chrome) ignore CAs you install y
 
 ---
 
-## D. Later: WireGuard only
-Once WireGuard runs on the Pi (e.g. `wg0` = `10.8.0.1`):
-1. In `.env`, set `BIND_IP=10.8.0.1` and run `docker compose up -d`. NPMplus and dnsmasq then listen only on the VPN.
-2. Docker has to start after WireGuard, or binding to `10.8.0.1` fails at boot:
-   ```bash
-   sudo systemctl enable wg-quick@wg0
-   sudo systemctl edit docker      # add the two lines below
-   # [Unit]
-   # After=wg-quick@wg0.service
-   ```
-3. Put `DNS = 10.8.0.1` in each device's WireGuard config.
-4. On the router, forward only UDP 51820 to the Pi.
+## D. WireGuard (wg-easy)
+WireGuard runs separately in **wg-easy** and doesn't depend on this stack. These settings let VPN devices, mainly the phone, open the `matrix.internal` sites from anywhere. Nothing changes on the Pi: NPMplus and dnsmasq stay on `BIND_IP` (the LAN IP), and wg-easy sends VPN traffic there.
+
+1. **wg-easy → Admin Panel → Config:**
+   - **Host:** your DuckDNS name. Keep the DuckDNS updater running, so the name follows your changing home IP.
+   - **Client DNS:** the Pi's LAN IP. dnsmasq answers `matrix.internal` and passes every other name on.
+   - **Client Allowed IPs:** `0.0.0.0/0, ::/0` (all traffic through home) or only your home network, e.g. `192.168.1.0/24`. Both work.
+2. **Existing clients:** new defaults only apply to new clients. Edit each existing client's DNS and Allowed IPs, or recreate it, then scan the new QR code in the WireGuard app.
+3. **On the phone:** install the root CA once, plus a device cert for mTLS-locked sites (part C).
+4. **Test away from home:** Wi-Fi off, mobile data on, VPN on, then open `https://npm.matrix.internal`. It should load with no warning. Tested and working on 8 Nov 2026.
+5. **Router:** forward only UDP 51820 to the Pi. WireGuard doesn't use TCP.
+
+**Optional, VPN-only mode:** to make the sites reachable *only* over the VPN, set `BIND_IP` to the wg-easy address of the Pi and point every device at it. It's more locked down, but then even at home the sites need the VPN on. Not used for now.
