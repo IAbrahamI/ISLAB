@@ -20,6 +20,7 @@ Follow this from top to bottom once. Parts A and B are the migration and first d
 | `client-cert.sh` | `new`, `renew` and `revoke` device certs |
 | `nginx/http.conf` | The mTLS rule: blocks requests without a valid, non-revoked device cert |
 | `nginx/revoked-serials.map` | Revoked devices. `client-cert.sh revoke` fills it |
+| `TODO.md` | Open points for later |
 
 ---
 
@@ -202,6 +203,23 @@ cd ~/NPMPlus && git pull && docker compose pull && docker compose up -d
 
 ### Backups
 `step-ca-data/` holds your CA's keys. Anyone who has it can issue valid certs. Back it up encrypted and off the Pi, and never commit it. Also back up `data/` (NPMplus's database) and `client-certs/`. `.gitignore` already keeps all three out of git.
+
+---
+
+## Questions and answers
+
+**Do the certificates renew themselves?**
+- **Server certs** (`npm.matrix.internal` and every other host): yes. NPMplus checks every few hours and renews each one at half its 7-day life, so about every 3–4 days.
+- **Device certs** (`.p12`): no, on purpose. They last 1 year. Run `./client-cert.sh renew <device>` before they expire and import the new `.p12`.
+- **Root CA:** valid for 10 years.
+
+**Do I have to redo the CA setup for a new service?**
+No. The root CA on your devices and the `Matrix client CA` entry in NPMplus are one-time and cover every future service. A new service is only a proxy host with *Request a new certificate* (plus the mTLS settings if you want it locked). Devices trust its cert right away.
+
+**Do all proxy hosts have to move to `matrix.internal`?**
+Yes. NPMplus sends every certificate, renewals included, to the CA in `ACME_SERVER`, which is your own CA. A Let's Encrypt cert can't renew any more and expires on the date shown under Certificates. Moving everything also means no DuckDNS and no public names. mTLS stays a choice per service.
+
+One thing to check first: **Android apps** (not Chrome) ignore CAs you install yourself, so they won't trust these certs unless the app trusts the CA itself. For your own apps that's one config file. See `TODO.md`.
 
 ---
 
